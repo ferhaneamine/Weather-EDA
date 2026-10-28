@@ -1,0 +1,11 @@
+# virtual environments and caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# editor / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

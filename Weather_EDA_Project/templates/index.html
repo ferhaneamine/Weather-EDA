@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#122a27">
+  <title>Weather Atlas · Advanced EDA Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <a class="brand" href="#top">
+          <span class="brand-mark">☼</span>
+          <span class="brand-text">weather<span class="brand-light">atlas</span></span>
+        </a>
+        <span class="version-tag">v2.0 · EDA</span>
+      </div>
+
+      <div class="side-label">NAVIGATION</div>
+      <nav id="sidebar-nav">
+        <a class="nav-link active" href="#overview"><span class="nav-icon">◫</span><span>Overview</span></a>
+        <div class="nav-group">DATA</div>
+        <a class="nav-link" href="#data-quality"><span class="nav-icon">🛡</span><span>Data Quality</span><span class="nav-pill">flags</span></a>
+        <a class="nav-link" href="#statistics"><span class="nav-icon">▤</span><span>Statistics</span><span class="nav-pill">min/max</span></a>
+        <div class="nav-group">ANALYSIS</div>
+        <a class="nav-link" href="#distributions"><span class="nav-icon">⌁</span><span>Distributions</span><span class="nav-pill">KDE</span></a>
+        <a class="nav-link" href="#relationships"><span class="nav-icon">▦</span><span>Relationships</span></a>
+        <a class="nav-link" href="#anomalies"><span class="nav-icon">◎</span><span>Anomalies</span></a>
+        <div class="nav-group">MODELING</div>
+        <a class="nav-link" href="#models"><span class="nav-icon">↗</span><span>Models</span></a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="status-indicator">
+          <div class="live-dot"></div>
+          <div>
+            <div class="status-title">Report Active</div>
+            <small id="sidebar-meta">weatherHistory.csv</small>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main id="top" class="main-content">
+      <!-- Top Header Bar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="crumb">MACHINE LEARNING 2 <span>/</span> ADVANCED EXPLORATORY DATA ANALYSIS</div>
+        </div>
+        <div class="top-right">
+          <div class="report-badge">
+            <span class="status-dot"></span>
+            <span>EDA Report Ready</span>
+          </div>
+          <button id="refresh" class="btn btn-icon" title="Reload report data" aria-label="Reload report">
+            <span class="icon-spin">↻</span> Refresh
+          </button>
+        </div>
+      </header>
+
+      <div class="page" id="page-overview" data-page="overview" data-title="Overview" hidden>
+      <!-- Section: Hero Overview -->
+      <section class="hero" id="overview">
+        <div class="hero-copy">
+          <div class="eyebrow">
+            <span class="sun-icon">✳</span> WEATHER HISTORY ARCHIVE · DECADE STUDY
+          </div>
+          <h1>Weather, in<br><em>every dimension.</em></h1>
+          <p class="hero-sub">
+            An in-depth statistical exploration across 96,000+ hourly atmospheric records. Analyze kernel density shapes, central tendencies, spreads, multivariate anomalies, and predictive models.
+          </p>
+          <div class="hero-meta">
+            <span class="meta-badge">● EDA COMPLETE</span>
+            <span id="generated-at" class="meta-time">Loading report timestamp…</span>
+          </div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="sun"></div>
+          <div class="cloud cloud-one"></div>
+          <div class="cloud cloud-two"></div>
+          <div class="hero-coordinate">37° 49′ N<br>122° 25′ W</div>
+        </div>
+      </section>
+      <!-- Overview KPI Metric Cards -->
+      <section class="metric-grid" id="metric-cards">
+        <article class="metric-card">
+          <div class="metric-top">
+            <span>TOTAL OBSERVATIONS</span>
+            <span class="metric-icon teal">↗</span>
+          </div>
+          <strong id="rows-value">—</strong>
+          <div class="metric-foot">hourly records analyzed</div>
+        </article>
+
+        <article class="metric-card">
+          <div class="metric-top">
+            <span>FEATURES / COLUMNS</span>
+            <span class="metric-icon blue">⌗</span>
+          </div>
+          <strong id="cols-value">—</strong>
+          <div class="metric-foot">8 numerical · 3 categorical · 1 date</div>
+        </article>
+
+        <article class="metric-card">
+          <div class="metric-top">
+            <span>MISSING CELLS</span>
+            <span class="metric-icon amber">◌</span>
+          </div>
+          <strong id="missing-value">—</strong>
+          <div class="metric-foot" id="missing-foot">across the entire dataset</div>
+        </article>
+
+        <article class="metric-card">
+          <div class="metric-top">
+            <span>HAMPEL OUTLIERS</span>
+            <span class="metric-icon coral">⌁</span>
+          </div>
+          <strong id="flags-value">—</strong>
+          <div class="metric-foot">rolling median deviation alerts</div>
+        </article>
+
+        <article class="metric-card">
+          <div class="metric-top">
+            <span>MAHALANOBIS ANOMALIES</span>
+            <span class="metric-icon purple">✦</span>
+          </div>
+          <strong id="anomalies-value">—</strong>
+          <div class="metric-foot" id="anomalies-foot">99% chi-square cutoff flags</div>
+        </article>
+      </section>
+
+      <section class="section-block" id="datasets">
+        <div class="section-heading">
+          <div><h2>Datasets</h2></div>
+        </div>
+        <div class="dataset-grid" id="dataset-grid"></div>
+      </section>
+
+      </div>
+
+      <div class="page" id="page-data-quality" data-page="data-quality" data-title="Data Quality" hidden>
+
+      <section class="section-block" id="temporal">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">02 · DATA QUALITY — TIME COVERAGE</div>
+            <h2>Timestamp Coverage & Gaps</h2>
+            <p>UTC-normalized coverage, timestamp duplicates, intervals, and observation counts by month and hour.</p>
+          </div>
+        </div>
+        <div class="metric-grid" id="temporal-metrics"></div>
+        <div class="chart-grid chart-grid-wide">
+          <article class="panel chart-panel"><div class="panel-head"><div><h3>Records by Month</h3><p>Monthly observation counts across the archive.</p></div></div><div id="monthly-chart" class="plot tall-plot"></div></article>
+          <article class="panel chart-panel"><div class="panel-head"><div><h3>Records by UTC Hour</h3><p>Counts by hour after normalizing source offsets.</p></div></div><div id="hourly-chart" class="plot tall-plot"></div></article>
+        </div>
+        <div class="note-card"><span class="note-icon">i</span><div class="note-text" id="temporal-note"></div></div>
+      </section>
+
+      <!-- Section: Meteorological Reality Audit & Dataset Health -->
+      <section class="section-block" id="audit">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">02 · DATA QUALITY — FLAGS &amp; DOMAIN CHECKS</div>
+            <h2>Data Quality Flags & Domain Checks</h2>
+            <p>Exploratory domain checks flag unusual values and possible measurement limits. Confirm causes against source and sensor documentation before treating a value as erroneous.</p>
+          </div>
+          <div class="table-actions">
+            <span class="badge badge-amber font-bold" style="font-size: 11px; padding: 6px 12px;">Exploratory checks · verify with source documentation</span>
+          </div>
+        </div>
+
+        <!-- Overall Dataset Health Visual Resume -->
+        <div class="health-summary-grid">
+          <!-- Donut Gauge Chart Card -->
+          <article class="panel health-gauge-card">
+            <div class="panel-head">
+              <div>
+                <h3>Pressure Zero Screen</h3>
+                <p>Observed zero and nonzero pressure readings; this does not certify overall data validity.</p>
+              </div>
+              <span class="tiny-tag">SINGLE-VARIABLE SCREEN</span>
+            </div>
+            <div class="health-gauge-body">
+              <div id="health-gauge-plot" class="gauge-plot"></div>
+              <div class="health-gauge-legend">
+                <div class="health-legend-item">
+                  <span class="health-legend-dot dot-good"></span>
+                  <div>
+                    <strong>Nonzero pressure readings</strong>
+                    <small>Not independently verified as valid</small>
+                  </div>
+                </div>
+                <div class="health-legend-item">
+                  <span class="health-legend-dot dot-warning"></span>
+                  <div>
+                    <strong>1,288 zero pressure readings (1.34%)</strong>
+                    <small>Suspect or sentinel values; confirm source encoding</small>
+                  </div>
+                </div>
+                <div class="health-legend-item">
+                  <span class="health-legend-dot dot-critical"></span>
+                  <div>
+                    <strong>517 missing precipitation types (0.54%)</strong>
+                    <small>Meaning depends on source collection rules</small>
+                  </div>
+                </div>
+                <div class="health-legend-item">
+                  <span class="health-legend-dot dot-purple"></span>
+                  <div>
+                    <strong>22 zero humidity readings (0.02%)</strong>
+                    <small>Review against instrument precision and source notes</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Critical Meteorological Warnings -->
+          <article class="panel health-highlights-card">
+            <div class="panel-head">
+              <div>
+                <h3>Key Domain Observations & Warnings</h3>
+                <p>Observed patterns that warrant context before cleaning or exclusion</p>
+              </div>
+              <span class="tiny-tag">PHYSICAL LAWS</span>
+            </div>
+            <div class="audit-alerts-list">
+              <div class="audit-alert-item alert-critical">
+                <div class="audit-alert-icon">🚨</div>
+                <div>
+                  <strong>Zero pressure is a strong data quality flag</strong>
+                  <p>1,288 rows contain 0.0 mb. This is implausible as a surface pressure reading, but its meaning (missing-value sentinel, logging issue, or other encoding) must be confirmed from the source documentation.</p>
+                </div>
+              </div>
+              <div class="audit-alert-item alert-warning">
+                <div class="audit-alert-icon">⚠️</div>
+                <div>
+                  <strong>Zero humidity deserves review</strong>
+                  <p>22 rows show 0.00 humidity. This may reflect rounding, a lower-bound convention, or a sensor/data issue; the value alone does not identify the cause.</p>
+                </div>
+              </div>
+              <div class="audit-alert-item alert-muted">
+                <div class="audit-alert-icon">❌</div>
+                <div>
+                  <strong>“Loud Cover” is constant zero in this file</strong>
+                  <p>The column has no variation and cannot distinguish records in this dataset. Its intended meaning is unclear from the values alone.</p>
+                </div>
+              </div>
+              <div class="audit-alert-item alert-info">
+                <div class="audit-alert-icon">ℹ️</div>
+                <div>
+                  <strong>Visibility has a maximum of about 16.1 km</strong>
+                  <p>A repeated upper bound can indicate a measurement ceiling, but confirm the instrument and source convention before treating these observations as censored.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- Comprehensive Feature-by-Feature Domain Reality Matrix -->
+        <article class="panel table-panel-full" style="margin-top: 16px;">
+          <div class="panel-head">
+            <div>
+              <h3>Feature-by-Feature Physical Plausibility Matrix</h3>
+              <p>Reference ranges and suggested checks are prompts for investigation, not verified sensor diagnoses.</p>
+            </div>
+            <span class="tiny-tag">12 FEATURES AUDITED</span>
+          </div>
+          <div class="table-wrap table-wrap-large">
+            <table class="data-table" id="audit-table">
+              <thead>
+                <tr>
+                  <th>FEATURE</th>
+                  <th>THEORETICAL LIMITS</th>
+                  <th>OBSERVED RANGE</th>
+                  <th class="num-cell">ANOMALOUS ROWS</th>
+                  <th>METEOROLOGICAL VERDICT</th>
+                  <th>RECOMMENDED TREATMENT</th>
+                </tr>
+              </thead>
+              <tbody id="audit-tbody">
+                <tr>
+                  <td class="feature-col">
+                    <strong>Pressure (millibars)</strong>
+                    <small class="feature-type">numerical · barometric</small>
+                  </td>
+                  <td>870 to 1,085 mb</td>
+                  <td class="tabular font-bold text-coral">0.0 to 1,046.4 mb</td>
+                  <td class="num-cell tabular font-bold text-coral">1,288 rows (1.34%)</td>
+                  <td><span class="badge badge-coral">⚠️ Suspect value</span><br><small>Zero is implausible as surface pressure; source encoding is unknown.</small></td>
+                  <td>Check source documentation; if confirmed as a sentinel, convert to missing and report the imputation rule.</td>
+                </tr>
+                <tr>
+                  <td class="feature-col">
+                    <strong>Humidity</strong>
+                    <small class="feature-type">numerical · fraction</small>
+                  </td>
+                  <td>0.02 to 1.00 (2% to 100%)</td>
+                  <td class="tabular font-bold text-amber">0.00 to 1.00</td>
+                  <td class="num-cell tabular font-bold text-amber">22 rows (0.02%)</td>
+                  <td><span class="badge badge-amber">⚠️ Review</span><br><small>Zero may reflect rounding, a lower-bound convention, or a data issue.</small></td>
+                  <td>Check sensor precision and source notes before recoding or imputing.</td>
+                </tr>
+                <tr>
+                  <td class="feature-col">
+                    <strong>Loud Cover</strong>
+                    <small class="feature-type">numerical · cloud proxy</small>
+                  </td>
+                  <td>0 to 8 oktas (0.0 to 1.0)</td>
+                  <td class="tabular font-bold text-muted">0.0 (constant)</td>
+                  <td class="num-cell tabular font-bold text-muted">96,453 rows (100%)</td>
+                  <td><span class="badge badge-muted">ℹ️ Constant in this file</span><br><small>Zero variance; the values do not reveal why it is constant.</small></td>
+                  <td>Drop column entirely from all preprocessing and machine learning pipelines.</td>
+                </tr>
+                <tr>
+                  <td class="feature-col">
+                    <strong>Visibility (km)</strong>
+                    <small class="feature-type">numerical · distance</small>
+                  </td>
+                  <td>0.0 to 50.0+ km</td>
+                  <td class="tabular">0.0 to 16.1 km</td>
+                  <td class="num-cell tabular text-blue">>12,000 at ceiling</td>
+                  <td><span class="badge badge-blue">ℹ️ Possible ceiling</span><br><small>Upper bound may reflect instrument limits; confirm metadata.</small></td>
+                  <td>Document the measurement ceiling if confirmed; otherwise retain the observed values.</td>
+                </tr>
+                <tr>
+                  <td class="feature-col">
+                    <strong>Precip Type</strong>
+                    <small class="feature-type">categorical · precipitation</small>
+                  </td>
+                  <td>rain, snow, none</td>
+                  <td class="tabular">rain (88.4%), snow (11.1%)</td>
+                  <td class="num-cell tabular text-amber">517 nulls (0.54%)</td>
+                  <td><span class="badge badge-amber">⚠️ Unrecorded Dry Periods</span><br><small>Nulls correspond to dry periods with zero rainfall/snowfall.</small></td>
+                  <td>Impute missing values with explicit category 'none' or 'dry'.</td>
+                </tr>
+                <tr>
+                  <td class="feature-col">
+                    <strong>Temperature (C)</strong>
+                    <small class="feature-type">numerical · target</small>
+                  </td>
+                  <td>-30°C to +45°C</td>
+                  <td class="tabular font-bold text-teal">-21.8°C to +39.9°C</td>
+                  <td class="num-cell tabular text-teal">0 outside stated range</td>
+                  <td><span class="badge badge-teal">✅ 100% Physically Realistic</span><br><small>Typical Central European continental climate (Szeged, Hungary).</small></td>
+                  <td>Retain for exploration; validate ranges against source metadata for production use.</td>
+                </tr>
+                <tr>
+                  <td class="feature-col">
+                    <strong>Apparent Temperature (C)</strong>
+                    <small class="feature-type">numerical · perceived</small>
+                  </td>
+                  <td>-40°C to +55°C</td>
+                  <td class="tabular font-bold text-teal">-27.7°C to +39.3°C</td>
+                  <td class="num-cell tabular text-teal">0 outside stated range</td>
+                  <td><span class="badge badge-teal">✅ Physically Realistic</span><br><small>Derived wind chill & heat index; drops lower due to convective wind chill.</small></td>
+                  <td>Exclude from predictors when predicting Temperature (prevents target leakage).</td>
+                </tr>
+                <tr>
+                  <td class="feature-col">
+                    <strong>Wind Speed (km/h)</strong>
+                    <small class="feature-type">numerical · velocity</small>
+                  </td>
+                  <td>0.0 to 150.0 km/h</td>
+                  <td class="tabular">0.0 to 63.85 km/h</td>
+                  <td class="num-cell tabular text-teal">0 outside stated range</td>
+                  <td><span class="badge badge-teal">✅ Physically Plausible</span><br><small>1,297 calm records (0 km/h) are Beaufort 0; max 63.8 km/h is gale force.</small></td>
+                  <td>Usable as-is; log-transform log(1+x) recommended for linear models.</td>
+                </tr>
+                <tr>
+                  <td class="feature-col">
+                    <strong>Wind Bearing (degrees)</strong>
+                    <small class="feature-type">numerical · compass angle</small>
+                  </td>
+                  <td>0° to 360°</td>
+                  <td class="tabular">0° to 359°</td>
+                  <td class="num-cell tabular text-blue">2,264 at 0° default</td>
+                  <td><span class="badge badge-teal">✅ Valid Angular Range</span><br><small>0° spikes coincide with calm winds where direction vanes default to North.</small></td>
+                  <td>Decompose into sin(θ) and cos(θ) for continuous cyclical modeling.</td>
+                </tr>
+                <tr>
+                  <td class="feature-col">
+                    <strong>Summary & Daily Summary</strong>
+                    <small class="feature-type">categorical · conditions</small>
+                  </td>
+                  <td>Standard weather classes</td>
+                  <td class="tabular">27 hourly / 214 daily</td>
+                  <td class="num-cell tabular text-blue">Rare categories (&lt;5 rows)</td>
+                  <td><span class="badge badge-teal">ℹ️ Imbalanced Classes</span><br><small>Top 4 classes account for 90.5% of records; rare classes present.</small></td>
+                  <td>Collapse rare categories into an 'Other / Severe' category for ML models.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="table-foot">
+            <span>These checks identify candidate issues, not a certified clean/unclean split. Confirm source conventions, then document any cleaning rule and its effect before modeling.</span>
+          </div>
+        </article>
+      </section>
+      </div>
+
+      <div class="page" id="page-statistics" data-page="statistics" data-title="Statistics" hidden>
+      <!-- Section: Comprehensive Data Description (Min, Max, Mean, Quartiles, etc.) -->
+      <section class="section-block" id="description">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">03 · STATISTICS — DATA SUMMARY &amp; PARAMETERS</div>
+            <h2>Data Description & Descriptive Statistics</h2>
+            <p>Comprehensive tabular summary of feature properties, central tendencies, extrema, quartile spreads, and skewness.</p>
+          </div>
+          <div class="table-actions">
+            <div class="segmented" role="group" aria-label="Statistics view type">
+              <button class="seg active" data-stats-view="numerical">Numerical Features</button>
+              <button class="seg" data-stats-view="categorical">Categorical Features</button>
+            </div>
+            <button id="export-stats-csv" class="btn btn-outline" title="Export this summary table as CSV">
+              <span>↓</span> Export CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Numerical Statistics Table -->
+        <article class="panel table-panel-full" id="numerical-stats-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Numerical Feature Properties (describe)</h3>
+              <p>Non-missing count, Mean, Std Dev, Min, 25% (Q1), Median (50%), 75% (Q3), Max, IQR, Skewness, Zeros, and Visual Range spread</p>
+            </div>
+            <div class="panel-tools">
+              <input class="search-input" id="stats-search" placeholder="Search variables…" aria-label="Filter statistics table">
+            </div>
+          </div>
+          <div class="table-wrap table-wrap-large">
+            <table class="data-table" id="numerical-stats-table">
+              <thead>
+                <tr>
+                  <th data-sort="feature" class="sortable">FEATURE <span class="sort-icon">↕</span></th>
+                  <th data-sort="count" class="sortable num-cell">COUNT <span class="sort-icon">↕</span></th>
+                  <th data-sort="mean" class="sortable num-cell">MEAN <span class="sort-icon">↕</span></th>
+                  <th data-sort="std" class="sortable num-cell">STD DEV <span class="sort-icon">↕</span></th>
+                  <th data-sort="min" class="sortable num-cell">MIN <span class="sort-icon">↕</span></th>
+                  <th data-sort="q1" class="sortable num-cell">25% (Q1) <span class="sort-icon">↕</span></th>
+                  <th data-sort="median" class="sortable num-cell highlight-header">50% (MEDIAN) <span class="sort-icon">↕</span></th>
+                  <th data-sort="q3" class="sortable num-cell">75% (Q3) <span class="sort-icon">↕</span></th>
+                  <th data-sort="max" class="sortable num-cell">MAX <span class="sort-icon">↕</span></th>
+                  <th data-sort="iqr" class="sortable num-cell">IQR <span class="sort-icon">↕</span></th>
+                  <th data-sort="skewness" class="sortable num-cell">SKEWNESS <span class="sort-icon">↕</span></th>
+                  <th data-sort="zeros" class="sortable num-cell">ZEROS <span class="sort-icon">↕</span></th>
+                  <th class="range-col">RANGE SPREAD (MIN → MEDIAN → MAX)</th>
+                </tr>
+              </thead>
+              <tbody id="numerical-stats-tbody"></tbody>
+            </table>
+          </div>
+          <div class="table-foot" id="stats-table-foot">
+            <span>Tip: Click any column header to sort. Click any row to jump to its distribution.</span>
+          </div>
+        </article>
+
+        <!-- Categorical Statistics Table -->
+        <article class="panel table-panel-full" id="categorical-stats-panel" style="display: none;">
+          <div class="panel-head">
+            <div>
+              <h3>Categorical Feature Properties</h3>
+              <p>Total non-missing records, unique categories, mode (most common value), and top frequency distribution</p>
+            </div>
+          </div>
+          <div class="table-wrap table-wrap-large">
+            <table class="data-table" id="categorical-stats-table">
+              <thead>
+                <tr>
+                  <th>FEATURE</th>
+                  <th class="num-cell">VALID RECORDS</th>
+                  <th class="num-cell">UNIQUE COUNT</th>
+                  <th>MODE (MOST FREQUENT)</th>
+                  <th class="num-cell">MODE FREQUENCY</th>
+                  <th class="num-cell">MODE SHARE</th>
+                  <th style="min-width: 320px;">TOP CATEGORIES BREAKDOWN</th>
+                </tr>
+              </thead>
+              <tbody id="categorical-stats-tbody"></tbody>
+            </table>
+          </div>
+          <div class="table-foot">
+            <span>Summary of nominal and categorical weather indicators across the entire timeline.</span>
+          </div>
+        </article>
+      </section>
+      </div>
+
+      <div class="page" id="page-distributions" data-page="distributions" data-title="Distributions" hidden>
+      <!-- Section: All Features KDE Gallery -->
+      <section class="section-block" id="all-kde">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">04 · DISTRIBUTIONS — PROBABILITY DENSITY</div>
+            <h2>All Features KDE Gallery</h2>
+            <p>Simultaneous Gaussian kernel density estimates across all variables using Scott's bandwidth rule (256 evaluation points).</p>
+          </div>
+          <div class="segmented" role="group" aria-label="KDE Gallery View">
+            <button class="seg active" data-kde-mode="grid">Gallery Grid (All 8 Features)</button>
+            <button class="seg" data-kde-mode="overlay">Standardized Overlay (Z-Score)</button>
+          </div>
+        </div>
+
+        <!-- Grid View: All 8 Features simultaneously -->
+        <div id="kde-grid-container" class="all-kde-grid"></div>
+
+        <!-- Overlay View: Standardized density curves comparison -->
+        <div id="kde-overlay-container" class="panel chart-panel" style="display: none;">
+          <div class="panel-head">
+            <div>
+              <h3>Standardized Multi-KDE Distribution Profiles</h3>
+              <p>Variables standardized to mean = 0, standard deviation = 1 to directly compare skewness, modality, and tail behaviors on one axis</p>
+            </div>
+            <span class="tiny-tag">STANDARDIZED (Z-SCORE)</span>
+          </div>
+          <div id="kde-overlay-chart" class="plot extra-tall-plot"></div>
+          <div class="chart-caption">
+            All continuous features normalized via \((x - \mu) / \sigma\) allowing direct visual comparison of symmetrical (temperature), bimodal (humidity), heavy-tailed (wind speed), and skewed (pressure) density profiles.
+          </div>
+        </div>
+      </section>
+      <!-- Section: Single Feature Deep Dive Distributions -->
+      <section class="section-block" id="distributions">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">04 · DISTRIBUTIONS — DEEP DIVE</div>
+            <h2>Individual Feature Distributions</h2>
+            <p>Examine histogram frequencies with high-res Gaussian KDE curves, box-whisker five-number summaries, and category frequencies.</p>
+          </div>
+        </div>
+
+        <div class="chart-grid chart-grid-wide">
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Numeric Distribution & KDE Overlay</h3>
+                <p>40-bin sample histogram overlaid with continuous Gaussian KDE</p>
+              </div>
+              <select id="distribution-feature" class="select-control" aria-label="Select feature for histogram and KDE"></select>
+            </div>
+            <div id="distribution-chart" class="plot"></div>
+          </article>
+
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3 id="shape-title">Five-Number Spread View</h3>
+                <p id="shape-subtitle">Quartiles, whiskers, and outlier distribution</p>
+              </div>
+              <div class="segmented shape-switch">
+                <button class="seg active" data-shape="box">Box Plot</button>
+                <button class="seg" data-shape="violin">Density Silhouette</button>
+              </div>
+            </div>
+            <div id="box-chart" class="plot"></div>
+            <div id="box-caption" class="chart-caption"></div>
+          </article>
+        </div>
+
+        <div class="chart-grid chart-grid-wide lower-grid">
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Category Frequency Analysis</h3>
+                <p>Distribution of occurrences in nominal variables</p>
+              </div>
+              <select id="category-feature" class="select-control" aria-label="Select categorical feature"></select>
+            </div>
+            <div id="category-chart" class="plot"></div>
+          </article>
+
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Missing Data by Field</h3>
+                <p>Percentage of missing values across all features</p>
+              </div>
+              <span class="tiny-tag">FULL DATASET AUDIT</span>
+            </div>
+            <div id="missing-chart" class="plot"></div>
+          </article>
+        </div>
+
+        <article class="panel chart-panel lower-grid">
+          <div class="panel-head">
+            <div>
+              <h3>Missingness Pattern Matrix</h3>
+              <p>Evenly spaced row sample across the timeline · green cells present, amber cells missing</p>
+            </div>
+            <span class="tiny-tag" id="missing-matrix-tag">500 ROW SAMPLE</span>
+          </div>
+          <div id="missing-matrix-chart" class="plot missing-matrix-plot"></div>
+        </article>
+      </section>
+      </div>
+
+      <div class="page" id="page-relationships" data-page="relationships" data-title="Relationships" hidden>
+      <!-- Section: Relationships & Correlation -->
+      <section class="section-block" id="relationships">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">05 · RELATIONSHIPS — MULTIVARIATE CORRELATIONS</div>
+            <h2>Relationships & Correlations</h2>
+            <p>Pairwise Pearson (linear) and Spearman (rank-order) correlation matrices across numerical variables.</p>
+          </div>
+          <div class="segmented" role="group" aria-label="Correlation type">
+            <button class="seg active" data-correlation="pearson">Pearson Matrix</button>
+            <button class="seg" data-correlation="spearman">Spearman Matrix</button>
+          </div>
+        </div>
+
+        <article class="panel heatmap-panel">
+          <div class="panel-head">
+            <div>
+              <h3 id="corr-title">Pearson Correlation Matrix</h3>
+              <p>Hover any cell to inspect the pairwise correlation coefficient \((-1 \le r \le +1)\)</p>
+            </div>
+            <span class="tiny-tag">PAIRWISE COMPLETE</span>
+          </div>
+          <div id="correlation-chart" class="plot heatmap-plot"></div>
+        </article>
+        <div id="target-correlation" class="insight-strip"></div>
+      </section>
+      </div>
+
+      <div class="page" id="page-anomalies" data-page="anomalies" data-title="Anomalies" hidden>
+      <!-- Section: Data Quality & Anomalies -->
+      <section class="section-block" id="quality">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">06 · ANOMALIES — SIGNAL &amp; OUTLIER DETECTION</div>
+            <h2>Statistical Anomaly Detection</h2>
+            <p>Robust statistical filters detect isolated spikes and joint multivariate anomalies without assuming gaussianity.</p>
+          </div>
+        </div>
+
+        <div class="chart-grid chart-grid-wide">
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Rolling Hampel Filter Explorer</h3>
+                <p>Centered 11-point rolling median and 3×MAD outlier detection</p>
+              </div>
+              <select id="hampel-feature" class="select-control" aria-label="Select feature for Hampel filtering"></select>
+            </div>
+            <div id="hampel-chart" class="plot tall-plot"></div>
+            <div class="chart-caption" id="hampel-caption"></div>
+          </article>
+
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Multivariate Mahalanobis Distance</h3>
+                <p>Joint feature distance with 99% chi-square significance threshold</p>
+              </div>
+              <span class="tiny-tag">99% $\chi^2$ CUTOFF</span>
+            </div>
+            <div id="anomaly-chart" class="plot tall-plot"></div>
+            <div class="chart-caption" id="anomaly-caption"></div>
+          </article>
+        </div>
+
+        <div class="chart-grid table-grid">
+          <article class="panel table-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Hampel Flagged Records</h3>
+                <p id="noise-table-sub">Search and filter flagged local outliers</p>
+              </div>
+              <input class="search-input" id="noise-search" placeholder="Search rows…" aria-label="Filter Hampel rows">
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>TIMESTAMP</th>
+                    <th class="num-cell">OBSERVED</th>
+                    <th class="num-cell">ROLLING MEDIAN</th>
+                    <th class="num-cell">DEVIATION</th>
+                    <th class="num-cell">ROW INDEX</th>
+                  </tr>
+                </thead>
+                <tbody id="noise-table"></tbody>
+              </table>
+            </div>
+            <div class="table-foot" id="noise-table-foot"></div>
+            <div class="table-actions"><button class="btn btn-outline" id="noise-prev" type="button">Previous</button><button class="btn btn-outline" id="noise-next" type="button">Next</button></div>
+          </article>
+
+          <article class="panel table-panel anomaly-table-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Mahalanobis Distance Alerts</h3>
+                <p id="anomaly-table-sub">Observations exceeding the 99% multivariate cutoff</p>
+              </div>
+              <input class="search-input" id="anomaly-search" placeholder="Search anomalies…" aria-label="Filter anomaly rows">
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>TIMESTAMP</th>
+                    <th class="num-cell">DISTANCE \(D\)</th>
+                    <th class="num-cell">SQUARED \(D^2\)</th>
+                    <th class="num-cell">ROW INDEX</th>
+                  </tr>
+                </thead>
+                <tbody id="anomaly-table"></tbody>
+              </table>
+            </div>
+            <div class="table-foot" id="anomaly-table-foot"></div>
+            <div class="table-actions"><button class="btn btn-outline" id="anomaly-prev" type="button">Previous</button><button class="btn btn-outline" id="anomaly-next" type="button">Next</button></div>
+          </article>
+        </div>
+      </section>
+      </div>
+
+      <div class="page" id="page-models" data-page="models" data-title="Models" hidden>
+      <!-- Section: Predictive Models & Importance -->
+      <section class="section-block" id="models">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">07 · MODELS — PREDICTIVE MODELING</div>
+            <h2>Feature Importance & Model Evaluation</h2>
+            <p>Predicting target variable <em>Temperature (°C)</em> on held-out chronological test data using Random Forest regressors.</p>
+          </div>
+          <select id="model-experiment" class="select-control experiment-select" aria-label="Select model experiment"></select>
+        </div>
+
+        <div class="model-metrics" id="model-metrics"></div>
+        <div class="note-card" id="rolling-validation-card" hidden><span class="note-icon">↻</span><div class="note-text" id="rolling-validation-text"></div></div>
+
+        <article class="panel chart-panel comparison-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Model Performance Comparison (Held-out Test Period)</h3>
+              <p>Random Forest with and without derived Apparent Temperature, compared with a calendar month × hour baseline.</p>
+            </div>
+            <span class="tiny-tag">TEST EVALUATION</span>
+          </div>
+          <div class="metric-comparison-grid">
+            <div class="comparison-card">
+              <span class="comparison-label">MAE · Mean Absolute Error (lower is better)</span>
+              <div id="compare-mae" class="mini-plot"></div>
+            </div>
+            <div class="comparison-card">
+              <span class="comparison-label">RMSE · Root Mean Squared Error (lower is better)</span>
+              <div id="compare-rmse" class="mini-plot"></div>
+            </div>
+            <div class="comparison-card">
+              <span class="comparison-label">R² Score · Variance Explained (higher is better)</span>
+              <div id="compare-r2" class="mini-plot"></div>
+            </div>
+          </div>
+        </article>
+
+        <div class="chart-grid chart-grid-wide">
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Impurity-Based Feature Importance</h3>
+                <p>Mean decrease in impurity (MDI) across all decision trees in the ensemble</p>
+              </div>
+              <span class="tiny-tag">MDI IMPURITY</span>
+            </div>
+            <div id="impurity-chart" class="plot tall-plot"></div>
+          </article>
+
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Permutation Feature Importance</h3>
+                <p>Decrease in held-out test \(R^2\) score upon feature shuffling (5 repeats)</p>
+              </div>
+              <span class="tiny-tag">PERMUTATION TEST</span>
+            </div>
+            <div id="permutation-chart" class="plot tall-plot"></div>
+          </article>
+        </div>
+
+        <!-- Detailed Feature Importance Leaderboard Table -->
+        <article class="panel table-panel-full" style="margin-top: 16px;">
+          <div class="panel-head">
+            <div>
+              <h3 id="fi-table-title">Random Forest Feature Importance Leaderboard</h3>
+              <p id="fi-table-sub">Predicting Temperature without target leakage · Ranked by MDI and Held-out Permutation Importance</p>
+            </div>
+            <span class="tiny-tag">RANDOM FOREST (100 TREES)</span>
+          </div>
+          <div class="table-wrap" style="height: 340px;">
+            <table class="data-table" id="model-fi-table">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">RANK</th>
+                  <th>FEATURE / PREDICTOR</th>
+                  <th>CATEGORY</th>
+                  <th class="num-cell">MDI SHARE</th>
+                  <th style="min-width: 140px;">RELATIVE IMPORTANCE</th>
+                  <th class="num-cell">PERMUTATION ΔR²</th>
+                  <th class="num-cell">TEST VARIATION (±σ)</th>
+                </tr>
+              </thead>
+              <tbody id="model-fi-tbody"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <div class="note-card">
+          <span class="note-icon">i</span>
+          <div class="note-text">
+            <strong>Predictive vs Causal Interpretation:</strong> Feature importance measures predictive utility in this fitted model, not physical causation. Apparent Temperature is derived from Temperature and other conditions, so including it makes the task easier and may leak target information. The no-apparent-temperature experiment is a more meaningful baseline, though weather summaries can still encode contemporaneous conditions. Rolling-origin scores vary by time window and do not guarantee future performance.
+          </div>
+        </div>
+      </section>
+      </div>
+
+
+      <!-- Footer -->
+      <footer class="footer">
+        <div class="footer-left">
+          <span>WEATHER ATLAS</span>
+          <span class="footer-dot">●</span>
+          <span>ADVANCED EDA & MACHINE LEARNING SUITE</span>
+        </div>
+        <div class="footer-right">
+          <span id="footer-hash">Fingerprint loading…</span>
+        </div>
+      </footer>
+
+      <!-- Global Error Notification -->
+      <div id="load-error" class="load-error" hidden></div>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/datasets.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/layout.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/descriptions.js') }}"></script>
+</body>
+</html>
