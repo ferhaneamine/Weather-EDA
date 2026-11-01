@@ -52,6 +52,17 @@ let currentStatsSort = { column: 'feature', direction: 'asc' };
 let noisePage = 0;
 let anomalyPage = 0;
 const FLAG_PAGE_SIZE = 200;
+const WEATHER_FEATURES = [
+  'Temperature (C)', 'Apparent Temperature (C)', 'Humidity', 'Wind Speed (km/h)',
+  'Wind Bearing (degrees)', 'Visibility (km)', 'Pressure (millibars)'
+];
+const WEATHER_UNITS = {
+  'Temperature (C)': '°C', 'Apparent Temperature (C)': '°C', Humidity: 'fraction',
+  'Wind Speed (km/h)': 'km/h', 'Wind Bearing (degrees)': 'degrees',
+  'Visibility (km)': 'km', 'Pressure (millibars)': 'millibars', 'Loud Cover': 'source code (constant 0)'
+};
+const WEATHER_DETAIL_FEATURES = [...WEATHER_FEATURES, 'Loud Cover'];
+let weatherTemperature = null;
 
 const byId = id => document.getElementById(id);
 
@@ -235,7 +246,10 @@ function renderInterpretationGuides() {
   setChartInterpretation('missing-matrix-chart', 'Each row is a deterministic sample from the file. Repeated amber patterns may indicate related missing fields, but this sampled matrix is not a substitute for the full counts.');
   setChartInterpretation('correlation-chart', 'Red indicates negative association, teal positive association, and pale cells weak association. Pearson captures linear relationships; Spearman uses ranks and can capture monotonic relationships.');
   setChartInterpretation('hampel-chart', 'A flagged point differs from its nearby rolling median by more than the configured 3×scaled-MAD threshold. Step changes and sharp weather events can also trigger flags.');
-  setChartInterpretation('anomaly-chart', 'Bars show the distribution of squared multivariate distances; the vertical line is an approximate 99% chi-square cutoff. Exceeding it means unusual relative to the fitted covariance, not physically impossible.');
+  setChartInterpretation('anomaly-chart', 'Blue points are a deterministic sample of normal observations; every existing Mahalanobis outlier is shown in coral. An outlier is unusual under the fitted covariance model and requires investigation, not automatic correction.');
+  setChartInterpretation('maha-histogram', 'The histogram uses every stored squared distance. Blue bins are at or below the existing chi-square cutoff; coral bins are above it. The threshold is an approximate reference under a multivariate-normal assumption.');
+  setChartInterpretation('temperature-chart', 'The timeline uses every dated Weather temperature reading. Month filtering follows the month in the source Formatted Date, while the horizontal time axis is normalized to UTC.');
+  setChartInterpretation('weather-scatter-chart', 'Points show a deterministic sample of pairwise complete Weather observations; Pearson r and the least-squares trend use all pairwise complete rows. Association is not causation.');
   setChartInterpretation('impurity-chart', 'MDI scores sum to one and show how often splits using a feature reduce tree error. Correlated and high-cardinality features can receive inflated or shared importance.');
   setChartInterpretation('permutation-chart', 'A larger positive held-out R² decrease means shuffling that feature hurt predictions more. Near-zero or negative values indicate little measured contribution on this test sample.');
   setChartInterpretation('model-fi-table', 'The leaderboard combines MDI (tree split usage) with permutation importance (test-score change after shuffling). The small label under each feature identifies whether it came from a source column or was engineered from the timestamp.');
@@ -908,7 +922,9 @@ function drawMissingMatrix() {
 // ==========================================
 function drawCorrelation(type = 'pearson') {
   const data = report.correlation_analysis[type];
-  const z = data.matrix;
+  const indexes = data.features.map((name, i) => WEATHER_FEATURES.includes(name) ? i : -1).filter(i => i >= 0);
+  const features = indexes.map(i => data.features[i]);
+  const z = indexes.map(i => indexes.map(j => data.matrix[i][j]));
   byId('corr-title').textContent = `${type[0].toUpperCase() + type.slice(1)} Correlation Matrix`;
 
   const colorscale = [
@@ -921,8 +937,8 @@ function drawCorrelation(type = 'pearson') {
     {
       type: 'heatmap',
       z,
-      x: data.features,
-      y: data.features,
+      x: features,
+      y: features,
       zmin: -1,
       zmax: 1,
       colorscale,
@@ -964,6 +980,73 @@ function drawCorrelation(type = 'pearson') {
     <span class="insight-pill insight-pos">↑ Strongest Positive: <strong>${escapeHtml(pos?.feature || '—')}</strong> (r = ${fmt(pos?.pearson, 3)})</span>
     <span class="insight-pill insight-neg">↓ Strongest Negative: <strong>${escapeHtml(neg?.feature || '—')}</strong> (r = ${fmt(neg?.pearson, 3)})</span>
   `;
+}
+
+// Weather-only interactive temperature and pairwise correlation explorers.
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+async function loadWeatherTemperature() {
+  const response = await fetch('/api/weather/temperature', { cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Could not load Weather temperature observations.');
+  weatherTemperature = data;
+  optionList(byId('temperature-month'), ['all', ...MONTH_NAMES.map((_, i) => String(i + 1))], value => value === 'all' ? 'All months' : MONTH_NAMES[Number(value) - 1]);
+  optionList(byId('temperature-months'), MONTH_NAMES.map((_, i) => String(i + 1)), value => MONTH_NAMES[Number(value) - 1]);
+  ['4', '7', '10', '1'].forEach(value => { const option = [...byId('temperature-months').options].find(o => o.value === value); if (option) option.selected = true; });
+  drawTemperature();
+}
+
+function drawTemperature() {
+  if (!weatherTemperature) return;
+  const mode = byId('temperature-mode').value;
+  const monthSelect = byId('temperature-month');
+  const monthsSelect = byId('temperature-months');
+  monthSelect.hidden = mode === 'compare';
+  monthsSelect.hidden = mode !== 'compare';
+  const dates = weatherTemperature.dates, values = weatherTemperature.temperatures;
+  const selected = mode === 'compare' ? [...monthsSelect.selectedOptions].map(o => Number(o.value)) : [monthSelect.value === 'all' ? 0 : Number(monthSelect.value)];
+  const colors = ['#257d70', '#d65f49', '#3b78ab', '#d99726', '#8453b8', '#209e7c', '#2c4559', '#e68438', '#668f86', '#b05a6a', '#577ca8', '#899c3d'];
+  const traces = selected.map(month => {
+    const xs = [], ys = [], ids = [];
+    let previousMs = null;
+    for (let i = 0; i < dates.length; i++) {
+      const date = new Date(dates[i]);
+      if ((!month || weatherTemperature.months[i] === month) && values[i] != null) { xs.push(dates[i]); ys.push(values[i]); ids.push([weatherTemperature.row_index[i], weatherTemperature.source_dates[i]]); }
+      if ((!month || weatherTemperature.months[i] === month) && values[i] != null) {
+        const currentMs = date.getTime();
+        if (previousMs != null && currentMs - previousMs > 2 * 86400000) { xs.splice(xs.length - 1, 0, null); ys.splice(ys.length - 1, 0, null); ids.splice(ids.length - 1, 0, null); }
+        previousMs = currentMs;
+      }
+    }
+    return { type: 'scattergl', mode: 'lines', x: xs, y: ys, name: month ? MONTH_NAMES[month - 1] : 'All months', customdata: ids,
+      connectgaps: false, line: { color: month ? colors[month - 1] : PALETTE.teal, width: 1.15 },
+      hovertemplate: '<b>Source date: %{customdata[1]}</b><br>Axis date: %{x|%Y-%m-%d %H:%M UTC}<br>Temperature: %{y:.2f} °C<br>Source row: %{customdata[0]}<extra>%{fullData.name}</extra>' };
+  });
+  const n = traces.reduce((sum, trace) => sum + trace.x.length, 0);
+  byId('temperature-caption').textContent = `${fmt(n, 0)} actual hourly readings shown from ${fmt(weatherTemperature.plotted_count, 0)} dated rows. ${weatherTemperature.sampling}`;
+  plot('temperature-chart', traces, {
+    dragmode: 'zoom', margin: { l: 58, r: 22, t: 24, b: 95 },
+    xaxis: { ...layoutBase.xaxis, type: 'date', tickformat: '%b %Y', title: { text: 'Date (UTC)' }, rangeslider: { visible: true, thickness: 0.08 } },
+    yaxis: { ...layoutBase.yaxis, title: { text: 'Temperature (°C)' } }, legend: { ...layoutBase.legend, y: 1.08 }
+  });
+}
+
+async function drawWeatherScatter() {
+  const x = byId('weather-scatter-x').value, y = byId('weather-scatter-y').value;
+  const response = await fetch(`/api/weather/correlation-points?x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}`, { cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Could not load this feature pair.');
+  const r = data.pearson_r;
+  const strength = r == null ? 'undefined' : Math.abs(r) < 0.2 ? 'weak' : Math.abs(r) < 0.6 ? 'moderate' : 'strong';
+  const direction = r == null || Math.abs(r) < 0.2 ? 'weak / near-zero' : r > 0 ? 'positive' : 'negative';
+  const reg = data.regression;
+  const traces = [{ type: 'scattergl', mode: 'markers', x: data.x_values, y: data.y_values, customdata: data.row_index,
+    name: 'Weather observations', marker: { color: 'rgba(37,125,112,0.42)', size: 5 },
+    hovertemplate: `${escapeHtml(x)}: %{x:.4f} ${escapeHtml(data.x_unit)}<br>${escapeHtml(y)}: %{y:.4f} ${escapeHtml(data.y_unit)}<br>Source row: %{customdata}<extra></extra>` }];
+  if (reg.slope != null) traces.push({ type: 'scatter', mode: 'lines', x: [reg.x_min, reg.x_max], y: [reg.slope * reg.x_min + reg.intercept, reg.slope * reg.x_max + reg.intercept], name: 'Linear regression', line: { color: PALETTE.coral, width: 2 }, hovertemplate: 'Linear trend<extra></extra>' });
+  plot('weather-scatter-chart', traces, { dragmode: 'zoom', xaxis: { ...layoutBase.xaxis, title: { text: `${x} (${data.x_unit})` } }, yaxis: { ...layoutBase.yaxis, title: { text: `${y} (${data.y_unit})` } } });
+  byId('weather-scatter-title').textContent = `${x} vs ${y}`;
+  byId('weather-scatter-caption').textContent = `Pearson r = ${fmt(r, 4)} · ${direction} (${strength}) linear association · ${fmt(data.plotted_count, 0)} of ${fmt(data.valid_count, 0)} pairwise complete observations plotted.`;
 }
 
 // ==========================================
@@ -1066,60 +1149,59 @@ function renderNoiseTable() {
   byId('noise-next').disabled = (noisePage + 1) * FLAG_PAGE_SIZE >= filtered.length;
 }
 
-function drawAnomalies() {
+async function drawAnomalies() {
   const a = report.anomaly_detection;
-  const c = a.chart_data.histogram;
-  const edges = c.bin_edges;
-  const centers = edges.slice(0, -1).map((v, i) => (v + edges[i + 1]) / 2);
-  const widths = edges.slice(0, -1).map((v, i) => edges[i + 1] - v);
-
-  plot('anomaly-chart', [
-    {
-      type: 'bar',
-      x: centers,
-      y: c.counts,
-      width: widths,
-      marker: { color: 'rgba(59, 120, 171, 0.55)' },
-      name: 'Observations',
-      hovertemplate: 'Squared Distance D²: %{x:.2f}<br>Count: %{y:,}<extra></extra>'
-    }
-  ], {
-    showlegend: false,
-    shapes: [
-      {
-        type: 'line',
-        x0: a.threshold,
-        x1: a.threshold,
-        y0: 0,
-        y1: 1,
-        yref: 'paper',
-        line: { color: PALETTE.coral, width: 2.2, dash: 'dash' }
-      }
-    ],
-    annotations: [
-      {
-        x: a.threshold,
-        y: 1,
-        yref: 'paper',
-        text: `99% Cutoff (D² = ${fmt(a.threshold, 2)})`,
-        showarrow: false,
-        xanchor: 'left',
-        font: { size: 10, color: PALETTE.coral, weight: 'bold' }
-      }
-    ],
-    xaxis: {
-      ...layoutBase.xaxis,
-      title: { text: 'Squared Mahalanobis Distance (D²)', font: { size: 11, color: PALETTE.ink } }
-    },
-    yaxis: {
-      ...layoutBase.yaxis,
-      title: { text: 'Observation Frequency', font: { size: 11, color: PALETTE.ink } }
+  const x = byId('maha-x').value || WEATHER_FEATURES[0];
+  const y = byId('maha-y').value || WEATHER_FEATURES[2];
+  const response = await fetch(`/api/weather/mahalanobis-points?x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}`, { cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Could not load Mahalanobis visualization points.');
+  const mode = byId('maha-mode').value;
+  const normal = data.points.filter(p => !p.flagged && (mode !== 'outliers'));
+  const outliers = data.points.filter(p => p.flagged && (mode !== 'normal'));
+  const traces = [];
+  if (mode !== 'outliers') traces.push({ type: 'scattergl', mode: 'markers', name: `Normal observations (${fmt(data.displayed_normal_count, 0)} sampled)`,
+    x: normal.map(p => p.x), y: normal.map(p => p.y), customdata: normal.map(p => [p.row_index, p.source_date, p.squared_distance]),
+    marker: { color: 'rgba(59,120,171,0.28)', size: 5 },
+    hovertemplate: `Normal observation<br>Row: %{customdata[0]}<br>Date: %{customdata[1]}<br>${escapeHtml(x)}: %{x:.4f}<br>${escapeHtml(y)}: %{y:.4f}<br>Squared distance: %{customdata[2]:.4f}<extra></extra>` });
+  if (mode !== 'normal') traces.push({ type: 'scattergl', mode: 'markers', name: `Detected outliers (${fmt(data.displayed_outlier_count, 0)}; all shown)`,
+    x: outliers.map(p => p.x), y: outliers.map(p => p.y), customdata: outliers.map(p => [p.row_index, p.source_date, p.squared_distance, ...WEATHER_DETAIL_FEATURES.map(feature => p.values[feature])]),
+    marker: { color: PALETTE.coral, size: 8, opacity: 0.94, line: { color: '#fff', width: 1 } },
+    hovertemplate: '<b>MAHALANOBIS OUTLIER</b><br>Row: %{customdata[0]}<br>Date: %{customdata[1]}<br>' + `${escapeHtml(x)}: %{x:.4f}<br>${escapeHtml(y)}: %{y:.4f}<br>Squared distance: %{customdata[2]:.4f}<extra></extra>` });
+  plot('anomaly-chart', traces, { dragmode: 'zoom', xaxis: { ...layoutBase.xaxis, title: { text: `${x} (${WEATHER_UNITS[x]})` } }, yaxis: { ...layoutBase.yaxis, title: { text: `${y} (${WEATHER_UNITS[y]})` } } });
+  byId('anomaly-chart').on('plotly_click', event => {
+    const point = event.points?.find(p => p.data.name.includes('Detected outliers'));
+    if (point && point.customdata) {
+      const values = Object.fromEntries(WEATHER_DETAIL_FEATURES.map((feature, i) => [feature, point.customdata[i + 3]]));
+      showMahalanobisDetail({ row_index: point.customdata[0], source_date: point.customdata[1], squared_distance: point.customdata[2], values }, data.threshold);
     }
   });
-
-  byId('anomaly-caption').textContent = `${fmt(a.flag_count, 0)} multivariate anomalies flagged (${fmt(a.flag_percentage, 2)}%) among ${fmt(a.complete_case_count, 0)} complete cases (${a.degrees_of_freedom} degrees of freedom; threshold D² = ${fmt(a.threshold, 2)}).`;
-
+  const modeNote = mode === 'outliers' ? 'Normal observations are hidden.' : mode === 'normal' ? 'Detected outliers are hidden.' : `${data.displayed_normal_count.toLocaleString()} normal rows are sampled for context.`;
+  byId('anomaly-caption').textContent = `${data.displayed_outlier_count.toLocaleString()} of ${data.outlier_count.toLocaleString()} existing detected outliers shown. ${modeNote} ${data.sampling}`;
+  byId('maha-metrics').innerHTML = [
+    ['Observations used', fmt(data.total_observations, 0)], ['Detected outliers', fmt(data.outlier_count, 0)],
+    ['Outlier rate', `${fmt(data.outlier_percentage, 2)}%`], ['Existing threshold D²', fmt(data.threshold, 4)],
+    ['Detection features', fmt(data.feature_count, 0)]
+  ].map(([label, value]) => `<article class="metric-card compact-metric"><div class="metric-top"><span>${escapeHtml(label)}</span></div><strong>${escapeHtml(value)}</strong></article>`).join('');
+  byId('maha-threshold-tag').textContent = `D² THRESHOLD ${fmt(data.threshold, 3)}`;
+  const histEdges = data.histogram.bin_edges;
+  const histCenters = histEdges.slice(0, -1).map((v, i) => (v + histEdges[i + 1]) / 2);
+  const histWidths = histEdges.slice(0, -1).map((v, i) => histEdges[i + 1] - v);
+  const histCustom = histEdges.slice(0, -1).map((v, i) => [v, histEdges[i + 1]]);
+  plot('maha-histogram', [
+    { type: 'bar', x: histCenters, y: data.histogram.below_counts, width: histWidths, name: 'At or below threshold', marker: { color: 'rgba(59,120,171,0.75)' }, customdata: histCustom, hovertemplate: 'D² range: %{customdata[0]:.3f}–%{customdata[1]:.3f}<br>Observations: %{y:,}<extra>%{fullData.name}</extra>' },
+    { type: 'bar', x: histCenters, y: data.histogram.above_counts, width: histWidths, name: 'Above threshold', marker: { color: PALETTE.coral }, customdata: histCustom, hovertemplate: 'D² range: %{customdata[0]:.3f}–%{customdata[1]:.3f}<br>Observations: %{y:,}<extra>%{fullData.name}</extra>' }
+  ], { barmode: 'overlay', shapes: [{ type: 'line', x0: data.threshold, x1: data.threshold, y0: 0, y1: 1, yref: 'paper', line: { color: PALETTE.ink, width: 2, dash: 'dash' } }],
+    annotations: [{ x: data.threshold, y: 1, yref: 'paper', text: `Existing cutoff ${fmt(data.threshold, 3)}`, showarrow: false, xanchor: 'left', font: { size: 10, color: PALETTE.ink } }],
+    xaxis: { ...layoutBase.xaxis, title: { text: 'Squared Mahalanobis Distance (D²)' } }, yaxis: { ...layoutBase.yaxis, title: { text: 'Observation count' } } });
   renderAnomalyTable();
+}
+
+function showMahalanobisDetail(point, threshold) {
+  const detail = byId('maha-detail');
+  const difference = point.squared_distance - threshold;
+  const rows = WEATHER_DETAIL_FEATURES.map(name => `<tr><th>${escapeHtml(name)} (${escapeHtml(WEATHER_UNITS[name])})</th><td>${fmt(point.values[name], 5)}</td></tr>`).join('');
+  detail.innerHTML = `<strong>Selected Mahalanobis outlier</strong><p>Original row ${fmt(point.row_index, 0)} · ${escapeHtml(point.source_date || 'Date unavailable')}</p><p>Squared distance: <b>${fmt(point.squared_distance, 5)}</b> · threshold: ${fmt(threshold, 5)} · above threshold by ${fmt(difference, 5)}</p><div class="table-wrap"><table><tbody>${rows}</tbody></table></div><p class="chart-interpretation">A statistical anomaly merits investigation; it is not automatically a data error.</p>`;
 }
 
 function renderAnomalyTable() {
@@ -1389,6 +1471,14 @@ function setupControls() {
 
   const hampelKeys = Object.keys(report.noise_detection.features).filter(k => report.noise_detection.features[k].status === 'ok');
   optionList(byId('hampel-feature'), hampelKeys);
+  optionList(byId('weather-scatter-x'), WEATHER_FEATURES);
+  optionList(byId('weather-scatter-y'), WEATHER_FEATURES);
+  byId('weather-scatter-x').value = 'Temperature (C)';
+  byId('weather-scatter-y').value = 'Humidity';
+  optionList(byId('maha-x'), WEATHER_FEATURES);
+  optionList(byId('maha-y'), WEATHER_FEATURES);
+  byId('maha-x').value = 'Temperature (C)';
+  byId('maha-y').value = 'Humidity';
 
   // Default to the experiment excluding the target-derived Apparent Temperature predictor.
   const expKeys = Object.keys(report.feature_importance.experiments);
@@ -1406,6 +1496,14 @@ function setupControls() {
   byId('category-feature').addEventListener('change', drawCategory);
   byId('hampel-feature').addEventListener('change', drawHampel);
   byId('model-experiment').addEventListener('change', drawModel);
+  byId('weather-scatter-x').addEventListener('change', () => drawWeatherScatter().catch(err => showError(err.message)));
+  byId('weather-scatter-y').addEventListener('change', () => drawWeatherScatter().catch(err => showError(err.message)));
+  byId('maha-x').addEventListener('change', () => drawAnomalies().catch(err => showError(err.message)));
+  byId('maha-y').addEventListener('change', () => drawAnomalies().catch(err => showError(err.message)));
+  byId('maha-mode').addEventListener('change', () => drawAnomalies().catch(err => showError(err.message)));
+  byId('temperature-mode').addEventListener('change', drawTemperature);
+  byId('temperature-month').addEventListener('change', drawTemperature);
+  byId('temperature-months').addEventListener('change', drawTemperature);
 
   // Search filters
   byId('stats-search').addEventListener('input', renderNumericalStatsTable);
@@ -1538,6 +1636,7 @@ async function load() {
     renderInterpretationGuides();
     renderTemporalAnalysis();
     setupControls();
+    loadWeatherTemperature().catch(err => showError(err.message));
     renderDataDescription();
     drawHealthGauge();
     renderAllKde();
@@ -1546,8 +1645,9 @@ async function load() {
     drawMissing();
     drawMissingMatrix();
     drawCorrelation();
+    drawWeatherScatter().catch(err => showError(err.message));
     drawHampel();
-    drawAnomalies();
+    drawAnomalies().catch(err => showError(err.message));
     drawModel();
 
   } catch (err) {

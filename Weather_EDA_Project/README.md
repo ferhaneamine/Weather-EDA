@@ -64,8 +64,9 @@ Open `http://127.0.0.1:5000` after starting Flask. If the database is missing, g
   - Graceful handling of constant zero variables (e.g. `Loud Cover`).
 
 - **Distribution Deep Dive:** Single-feature histogram (40 bins) with high-resolution KDE overlay, interactive box plot vs. mirrored density silhouette (violin) toggle, categorical bars, and 500-row deterministic missingness pattern matrix.
-- **Multivariate Correlations:** Interactive Pearson and Spearman heatmaps with target correlation indicators.
-- **Quality & Anomaly Detection:** 11-point centered rolling Hampel filter with 3×MAD outlier flags and 99% $\chi^2$ multivariate Mahalanobis distance alerts with searchable, paginated row-level tables.
+- **Multivariate Correlations:** Interactive Pearson and Spearman heatmaps with target correlation indicators, plus a sampled Weather-only scatter explorer with full-data Pearson r and regression.
+- **Temperature Evolution:** Weather-only chronological hourly temperature chart with month filters, multi-month comparison, zoom, pan, range slider, and source-date hover details.
+- **Quality & Anomaly Detection:** 11-point centered rolling Hampel filter with 3×MAD outlier flags and 99% $\chi^2$ multivariate Mahalanobis distance alerts. The Mahalanobis explorer preserves all detected points, samples only normal points, and shows selectable source-row details and a threshold-split distance distribution.
 - **Predictive Machine Learning Evaluation:** Comparative Random Forest experiments (with/without derived apparent temperature) featuring MAE, RMSE, $R^2$, impurity importance (MDI), 5-repeat held-out permutation importance, an expanding-window chronological validation for the no-apparent-temperature model, and a calendar month × hour climatology baseline.
 
 ## Database layout (SQLite)
@@ -95,8 +96,8 @@ The dashboard shows one page at a time. Use the sidebar (or the Previous / Next 
 | Data | Data Quality | time coverage, quality flags and domain checks |
 | Data | Statistics | descriptive statistics tables |
 | Analysis | Distributions | KDE gallery and single-feature deep dive (histogram, box plot, missing data) |
-| Analysis | Relationships | Pearson and Spearman correlations |
-| Analysis | Anomalies | Hampel filter and Mahalanobis distance |
+| Analysis | Relationships | Pearson and Spearman correlations, temperature evolution and monthly comparisons, interactive Weather feature scatter |
+| Analysis | Anomalies | Hampel filter and interactive Mahalanobis outlier explorer |
 | Modeling | Models | model comparison and feature importance |
 
 The page is part of the URL (for example `http://127.0.0.1:5000/#anomalies`), so a page can be bookmarked or linked.
@@ -117,8 +118,8 @@ The report (stored as described above) uses schema version `1.0.0`, an ISO-8601 
 
 Top-level sections: `metadata`, `dataset_overview`, `temporal_analysis`, `missing_data`, `descriptive_statistics`, `distributions`, `kde`, `correlation_analysis`, `noise_detection`, `anomaly_detection`, `feature_importance`, `chart_data`, `interpretations`, and `limitations`. The `chart_data` section provides convenient chart series; detailed observations and method notes live in their analysis sections. KDE records have `x` and `density` arrays, sample counts, bandwidth method, sampling flag, status, and limitation. Histogram edges correspond to adjacent bins; matrix row and column order is explicit. The dashboard renders overview cards, histograms with KDE lines, box summaries, category counts, missingness bars, Pearson/Spearman heatmaps, Hampel time series and searchable flags, Mahalanobis distance histogram and alerts, plus both model importance methods and metrics.
 
-The dashboard receives the complete report from `GET /api/report`. It renders the supplied arrays and tables directly and does not recompute EDA in the browser, so the web layer is responsible only for visual rendering and interactions. Other endpoints: `GET /api/datasets` and `GET /api/datasets/<id>` (dataset cards and the rows of one dataset) and `GET/PUT /api/descriptions` (description boxes).
+The dashboard receives the EDA report from `GET /api/report`. Weather-specific chart endpoints read only `datasets/weatherHistory.csv`: `GET /api/weather/temperature` supplies chronologically sorted temperature observations, `GET /api/weather/correlation-points?x=...&y=...` supplies a deterministic scatter sample with full-pair statistics, and `GET /api/weather/mahalanobis-points?x=...&y=...` joins a normal-point sample and every existing outlier to the stored Mahalanobis result. The stored report remains the source for the heatmaps, existing EDA summaries, anomaly classifications, and distances. Other endpoints: `GET /api/datasets` and `GET /api/datasets/<id>` (dataset cards and the rows of one dataset) and `GET/PUT /api/descriptions` (description boxes).
 
 ## Assumptions and limitations
 
-CSV data are analyzed as supplied; zero is not treated as missing and duplicate records are counted, not removed. Date parsing uses pandas with UTC normalization for sorting and timestamps. Time gaps may reflect source coverage or cadence. The Mahalanobis threshold is approximate when data are non-normal or covariance needs stabilization. Random Forest importance can be biased by correlated features; apparent temperature is derived from temperature and is included only in a separately labeled comparison. Rolling-origin and held-out scores describe this dataset and period, not guaranteed future performance. Some chart arrays are binned or sampled as documented, while complete missing totals, flagged observations, categorical frequencies, and model tables are retained.
+CSV data are analyzed as supplied; zero is not treated as missing and duplicate records are counted, not removed. Date parsing uses pandas with UTC normalization for chart ordering; hover and outlier detail retain the exact source date text. Time gaps may reflect source coverage or cadence. Pearson describes linear association and does not imply causation; ordinary Pearson correlation for circular wind bearing can be misleading. The Mahalanobis threshold is approximate when data are non-normal or covariance needs stabilization, and flagged rows are statistical anomalies that require investigation rather than confirmed data errors. Random Forest importance can be biased by correlated features; apparent temperature is derived from temperature and is included only in a separately labeled comparison. Rolling-origin and held-out scores describe this dataset and period, not guaranteed future performance. Some chart arrays are binned or sampled as documented, while complete missing totals, flagged observations, categorical frequencies, and model tables are retained.

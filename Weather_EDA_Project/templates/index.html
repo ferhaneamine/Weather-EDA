@@ -613,7 +613,7 @@
           <div>
             <div class="eyebrow">05 · RELATIONSHIPS — MULTIVARIATE CORRELATIONS</div>
             <h2>Relationships & Correlations</h2>
-            <p>Pairwise Pearson (linear) and Spearman (rank-order) correlation matrices across numerical variables.</p>
+            <p>Pairwise Pearson (linear) and Spearman (rank-order) matrices for seven continuous Weather variables. Missing values are handled pairwise; wind bearing is circular, so ordinary Pearson can be misleading for direction.</p>
           </div>
           <div class="segmented" role="group" aria-label="Correlation type">
             <button class="seg active" data-correlation="pearson">Pearson Matrix</button>
@@ -625,13 +625,43 @@
           <div class="panel-head">
             <div>
               <h3 id="corr-title">Pearson Correlation Matrix</h3>
-              <p>Hover any cell to inspect the pairwise correlation coefficient \((-1 \le r \le +1)\)</p>
+              <p>Hover any cell to inspect the pairwise coefficient. Pearson describes linear association; correlation does not imply causation.</p>
             </div>
             <span class="tiny-tag">PAIRWISE COMPLETE</span>
           </div>
           <div id="correlation-chart" class="plot heatmap-plot"></div>
         </article>
         <div id="target-correlation" class="insight-strip"></div>
+
+        <div class="section-heading weather-analysis-heading">
+          <div><div class="eyebrow">WEATHER HISTORY · TEMPERATURE</div><h2>Temperature Evolution</h2>
+            <p>Hourly observations are shown in chronological order. Select a month across all years or compare several months without averaging away the hourly variation.</p></div>
+        </div>
+        <article class="panel chart-panel">
+          <div class="panel-head"><div><h3>Temperature Through Time</h3><p id="temperature-caption">Loading Weather observations…</p></div>
+            <div class="weather-controls">
+              <select id="temperature-mode" class="select-control" aria-label="Temperature view mode"><option value="single">Single month / all months</option><option value="compare">Compare months</option></select>
+              <select id="temperature-month" class="select-control" aria-label="Select month"></select>
+              <select id="temperature-months" class="select-control" aria-label="Select months to compare" multiple size="4" hidden></select>
+            </div>
+          </div>
+          <div id="temperature-chart" class="plot extra-tall-plot"></div>
+        </article>
+
+        <div class="section-heading weather-analysis-heading">
+          <div><div class="eyebrow">WEATHER HISTORY · PAIRWISE EXPLORATION</div><h2>Interactive Numerical Correlation</h2>
+            <p>Explore individual weather observations and their linear trend. Pearson r and the regression line use every pairwise complete Weather record.</p></div>
+        </div>
+        <article class="panel chart-panel">
+          <div class="panel-head"><div><h3 id="weather-scatter-title">Weather Feature Scatter</h3><p id="weather-scatter-caption">Choose two numerical weather features.</p></div>
+            <div class="weather-controls">
+              <label class="control-label" for="weather-scatter-x">X feature</label><select id="weather-scatter-x" class="select-control"></select>
+              <label class="control-label" for="weather-scatter-y">Y feature</label><select id="weather-scatter-y" class="select-control"></select>
+            </div>
+          </div>
+          <div id="weather-scatter-chart" class="plot extra-tall-plot"></div>
+          <p class="chart-interpretation">Pearson correlation describes linear association and does not imply causation. Wind Bearing (degrees) is circular; ordinary Pearson correlation can misrepresent its directional relationship.</p>
+        </article>
       </section>
       </div>
 
@@ -642,7 +672,7 @@
           <div>
             <div class="eyebrow">06 · ANOMALIES — SIGNAL &amp; OUTLIER DETECTION</div>
             <h2>Statistical Anomaly Detection</h2>
-            <p>Robust statistical filters detect isolated spikes and joint multivariate anomalies without assuming gaussianity.</p>
+            <p>Hampel flags identify local deviations. Mahalanobis flags identify unusual combinations using a chi-square threshold under an approximate multivariate-normal assumption.</p>
           </div>
         </div>
 
@@ -662,13 +692,23 @@
           <article class="panel chart-panel">
             <div class="panel-head">
               <div>
-                <h3>Multivariate Mahalanobis Distance</h3>
-                <p>Joint feature distance with 99% chi-square significance threshold</p>
+                <h3>Mahalanobis Outlier Explorer</h3>
+                <p>Existing squared distances and classifications; click an outlier to inspect its source row.</p>
               </div>
-              <span class="tiny-tag">99% $\chi^2$ CUTOFF</span>
+              <div class="weather-controls">
+                <select id="maha-x" class="select-control" aria-label="Mahalanobis scatter X feature"></select>
+                <select id="maha-y" class="select-control" aria-label="Mahalanobis scatter Y feature"></select>
+                <select id="maha-mode" class="select-control" aria-label="Mahalanobis observation display mode"><option value="all">All observations</option><option value="outliers">Outliers only</option><option value="normal">Normal only</option></select>
+              </div>
             </div>
             <div id="anomaly-chart" class="plot tall-plot"></div>
             <div class="chart-caption" id="anomaly-caption"></div>
+            <div class="metric-grid anomaly-metrics" id="maha-metrics"></div>
+            <div class="detail-panel" id="maha-detail"><strong>Outlier details</strong><p>Select a highlighted outlier to inspect its original Weather row.</p></div>
+          </article>
+          <article class="panel chart-panel">
+            <div class="panel-head"><div><h3>Squared Distance Distribution</h3><p>Every existing complete-case Mahalanobis distance; colors separate values below and above the existing cutoff.</p></div><span class="tiny-tag" id="maha-threshold-tag">CHI-SQUARE CUTOFF</span></div>
+            <div id="maha-histogram" class="plot tall-plot"></div>
           </article>
         </div>
 
